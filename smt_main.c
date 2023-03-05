@@ -46,9 +46,6 @@ void smt_init(void)
     SMT1CON1bits.MODE = 0b0010;//capture mode
     SMT1CON1bits.REPEAT =1;
     SMT1CON0bits.SMT1PS = 3;
-//    SMT1CON0bits.STP = 1;
-    //smtwin = ra5
-    
     SMT1PR = 0xffffff;
     SMT1CON1bits.SMT1GO = 1;
     
@@ -66,42 +63,31 @@ void uart_init(void)
     RC1STAbits.SPEN = 1;
     BAUD1CONbits.BRG16 = 1;
     SPBRGH = 0;
-    SPBRGL =  70;
-    RC7PPS = 0b10010;
+    SPBRGL =  70;//115200bps
+    RC7PPS = 0b10010;//Uart to RC7
     
     
 }
 
-volatile char dataAvailable,smt2PendChange;
-volatile long actValue,refreshValue,smt2Value;
+volatile char dataAvailable;
+volatile long smt2Value;
 
 void main(void) {
-    TRISBbits.TRISB7 = 0;
-    TRISAbits.TRISA5 = 1;
-    TRISAbits.TRISA4 = 1;
-    ANSELAbits.ANSA4 =0;
-    TRISBbits.TRISB6 = 0;
+    TRISBbits.TRISB7 = 0;//debug
+    TRISAbits.TRISA4 = 1;//smt1 signal in(default)
+    ANSELAbits.ANSA4 =0;//analog enabled by default.....
+    TRISBbits.TRISB6 = 0;//CLC out
     TRISCbits.TRISC7 = 1;
     OSCCONbits.SCS = 0;
-    OSCCONbits.IRCF = 0b1110;
+    OSCCONbits.IRCF = 0b1110;//32Mhz clock
     INTCONbits.GIE = 1;
     INTCONbits.PEIE = 1;
     PIE4bits.SMT1PRAIE = 1;
     PIE4bits.SMT2IE = 1;
-    PIE4bits.SMT1IE = 1;
-    OSCTUNEbits.TUN = 0b011111;
+    OSCTUNEbits.TUN = 0b011111;//probably dont need it
     
     smt_init();
     uart_init();
-    
-//    CLC1CONbits.EN = 0;
-//    CLC1CONbits.LC1MODE = 0b110;
-//    CLC1SEL0bits.D1S = 0b100000;
-//    
-//    CLC1POLbits.G2POL = 1;
-//    CLC1POLbits.G4POL = 1;
-//    CLC1GLS0bits.D1T = 1;
-//    CLC1SEL0bits.D1S = 0b100000;
     CLC1CON = 0x86;
     CLC1GLS0 = 0x02;
     CLC1GLS1 = 0;
@@ -112,9 +98,8 @@ void main(void) {
     CLC1SEL1 = 0;
     CLC1SEL2 = 0;
     CLC1SEL3 = 0;
-    RB6PPS = 0b00100;
+    RB6PPS = 0b00100;//CLC out to RC6
     CLC1CONbits.EN = 1;
-    smt2PendChange = 1;
     while(1)
     {
         if(dataAvailable)
@@ -131,6 +116,7 @@ void __interrupt () myIsr (void)
     if(PIR4bits.SMT1PRAIF)
     {      
         dataAvailable = 1;
+        LATBbits.LATB7 = ~LATBbits.LATB7;//just for debug
         PIR4bits.SMT1PRAIF = 0;
     }
     if(PIR4bits.SMT2IF)
@@ -138,13 +124,8 @@ void __interrupt () myIsr (void)
         PIR4bits.SMT2IF = 0;
         SMT2TMR = 16777216-smt2Value;
     }
-    if(PIR4bits.SMT1IF)
-    { 
-        LATBbits.LATB7 = ~LATBbits.LATB7;
-        PIR4bits.SMT1IF = 0;
-    }
 }
-void putch(char c)
+void putch(char c)//printf redirect
 {
        TX1REG = c;
        while(TX1STAbits.TRMT != 1);

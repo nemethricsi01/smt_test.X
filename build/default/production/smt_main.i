@@ -17175,9 +17175,6 @@ void smt_init(void)
     SMT1CON1bits.MODE = 0b0010;
     SMT1CON1bits.REPEAT =1;
     SMT1CON0bits.SMT1PS = 3;
-
-
-
     SMT1PR = 0xffffff;
     SMT1CON1bits.SMT1GO = 1;
 
@@ -17201,12 +17198,11 @@ void uart_init(void)
 
 }
 
-volatile char dataAvailable,smt2PendChange;
-volatile long actValue,refreshValue,smt2Value;
+volatile char dataAvailable;
+volatile long smt2Value;
 
 void main(void) {
     TRISBbits.TRISB7 = 0;
-    TRISAbits.TRISA5 = 1;
     TRISAbits.TRISA4 = 1;
     ANSELAbits.ANSA4 =0;
     TRISBbits.TRISB6 = 0;
@@ -17217,12 +17213,10 @@ void main(void) {
     INTCONbits.PEIE = 1;
     PIE4bits.SMT1PRAIE = 1;
     PIE4bits.SMT2IE = 1;
-    PIE4bits.SMT1IE = 1;
     OSCTUNEbits.TUN = 0b011111;
 
     smt_init();
     uart_init();
-# 105 "smt_main.c"
     CLC1CON = 0x86;
     CLC1GLS0 = 0x02;
     CLC1GLS1 = 0;
@@ -17235,7 +17229,6 @@ void main(void) {
     CLC1SEL3 = 0;
     RB6PPS = 0b00100;
     CLC1CONbits.EN = 1;
-    smt2PendChange = 1;
     while(1)
     {
         if(dataAvailable)
@@ -17252,17 +17245,13 @@ void __attribute__((picinterrupt(("")))) myIsr (void)
     if(PIR4bits.SMT1PRAIF)
     {
         dataAvailable = 1;
+        LATBbits.LATB7 = ~LATBbits.LATB7;
         PIR4bits.SMT1PRAIF = 0;
     }
     if(PIR4bits.SMT2IF)
     {
         PIR4bits.SMT2IF = 0;
         SMT2TMR = 16777216-smt2Value;
-    }
-    if(PIR4bits.SMT1IF)
-    {
-        LATBbits.LATB7 = ~LATBbits.LATB7;
-        PIR4bits.SMT1IF = 0;
     }
 }
 void putch(char c)
