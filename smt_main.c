@@ -15,7 +15,7 @@
 #pragma config CP = OFF         // Flash Program Memory Code Protection (Program memory code protection is disabled)
 #pragma config BOREN = ON       // Brown-out Reset Enable (Brown-out Reset enabled)
 #pragma config CLKOUTEN = OFF   // Clock Out Enable (CLKOUT function is disabled. I/O or oscillator function on the CLKOUT pin)
-#pragma config IESO = ON        // Internal/External Switch Over (Internal External Switch Over mode is enabled)
+#pragma config IESO = OFF        // Internal/External Switch Over (Internal External Switch Over mode is enabled)
 #pragma config FCMEN = ON       // Fail-Safe Clock Monitor Enable (Fail-Safe Clock Monitor is enabled)
 
 // CONFIG2
@@ -23,7 +23,7 @@
 #pragma config PPS1WAY = OFF    // Peripheral Pin Select one-way control (The PPSLOCK bit can be set and cleared repeatedly by software)
 #pragma config ZCD = OFF        // Zero Cross Detect Disable Bit (ZCD disable.  ZCD can be enabled by setting the ZCDSEN bit of ZCDCON)
 #pragma config PLLEN = ON       // PLL Enable Bit (4x PLL is always enabled)
-#pragma config STVREN = ON      // Stack Overflow/Underflow Reset Enable (Stack Overflow or Underflow will cause a Reset)
+#pragma config STVREN = OFF      // Stack Overflow/Underflow Reset Enable (Stack Overflow or Underflow will cause a Reset)
 #pragma config BORV = LO        // Brown-out Reset Voltage Selection (Brown-out Reset Voltage (Vbor), low trip point selected.)
 #pragma config LPBOR = OFF      // Low-Power Brown Out Reset (Low-Power BOR is disabled)
 #pragma config LVP = ON         // Low-Voltage Programming Enable (Low-voltage programming enabled)
@@ -39,15 +39,24 @@
 #define _XTAL_FREQ 32000000
 #include <xc.h>
 #include <stdio.h>
+#include<stdint.h>
 void smt_init(void)
 {
-    
-    SMT1CON1bits.MODE = 0b0111;//capture mode
-    SMT1CON1bits.SMT1GO = 1;
-    SMT1CON1bits.REPEAT =1;
-    SMT1CLKbits.CSEL = 1;
-    //smtwin = ra5
     SMT1CON0bits.EN = 1;
+    SMT1CON1bits.MODE = 0b0010;//capture mode
+    SMT1CON1bits.REPEAT =1;
+    SMT1CON0bits.SMT1PS = 3;
+//    SMT1CON0bits.STP = 1;
+    //smtwin = ra5
+    
+    SMT1PR = 0xffffff;
+    SMT1CON1bits.SMT1GO = 1;
+    
+    SMT2CON1bits.MODE = 0;//timer mode
+    SMT2CON1bits.REPEAT =1;
+    SMT2CON0bits.SMT2PS = 1;
+    SMT2CON0bits.EN = 1;
+    SMT2CON1bits.SMT2GO = 1;
     
 }
 void uart_init(void)
@@ -63,48 +72,76 @@ void uart_init(void)
     
 }
 
-static char dataAvailable;
-static long lastValue,actValue;
+volatile char dataAvailable,smt2PendChange;
+volatile long actValue,refreshValue,smt2Value;
 
 void main(void) {
     TRISBbits.TRISB7 = 0;
     TRISAbits.TRISA5 = 1;
-
+    TRISAbits.TRISA4 = 1;
+    ANSELAbits.ANSA4 =0;
+    TRISBbits.TRISB6 = 0;
     TRISCbits.TRISC7 = 1;
     OSCCONbits.SCS = 0;
-    OSCCONbits.IRCF = 0b1111;
-    NOP();
-    NOP();
-    NOP();
-    NOP();
-    
+    OSCCONbits.IRCF = 0b1110;
     INTCONbits.GIE = 1;
     INTCONbits.PEIE = 1;
     PIE4bits.SMT1PRAIE = 1;
+    PIE4bits.SMT2IE = 1;
+    PIE4bits.SMT1IE = 1;
+    OSCTUNEbits.TUN = 0b011111;
+    
     smt_init();
     uart_init();
+    
+//    CLC1CONbits.EN = 0;
+//    CLC1CONbits.LC1MODE = 0b110;
+//    CLC1SEL0bits.D1S = 0b100000;
+//    
+//    CLC1POLbits.G2POL = 1;
+//    CLC1POLbits.G4POL = 1;
+//    CLC1GLS0bits.D1T = 1;
+//    CLC1SEL0bits.D1S = 0b100000;
+    CLC1CON = 0x86;
+    CLC1GLS0 = 0x02;
+    CLC1GLS1 = 0;
+    CLC1GLS2 = 0;
+    CLC1GLS3 = 0;
+    CLC1POL = 0xA;
+    CLC1SEL0 = 0x14;
+    CLC1SEL1 = 0;
+    CLC1SEL2 = 0;
+    CLC1SEL3 = 0;
+    RB6PPS = 0b00100;
+    CLC1CONbits.EN = 1;
+    smt2PendChange = 1;
     while(1)
     {
-        
         if(dataAvailable)
         {
-        printf("SMT1CPR: %ld\n",actValue);
-        __delay_ms(50);
-        dataAvailable = 0;
+            smt2Value = ((SMT1CPR&0xffffff)/25);
+            printf("%ld\n",SMT1CPR&0xffffff);
+            dataAvailable = 0;
         }
-        
     }
     return;
 }
 void __interrupt () myIsr (void)
 {
     if(PIR4bits.SMT1PRAIF)
+    {      
+        dataAvailable = 1;
+        PIR4bits.SMT1PRAIF = 0;
+    }
+    if(PIR4bits.SMT2IF)
     {
-        actValue = SMT1CPR-lastValue;
-    lastValue = SMT1CPR;
-    LATBbits.LATB7 ^= 1;
-    dataAvailable = 1;
-    PIR4bits.SMT1PRAIF = 0;
+        PIR4bits.SMT2IF = 0;
+        SMT2TMR = 16777216-smt2Value;
+    }
+    if(PIR4bits.SMT1IF)
+    { 
+        LATBbits.LATB7 = ~LATBbits.LATB7;
+        PIR4bits.SMT1IF = 0;
     }
 }
 void putch(char c)
