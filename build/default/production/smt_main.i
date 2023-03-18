@@ -8,13 +8,13 @@
 # 2 "<built-in>" 2
 # 1 "smt_main.c" 2
 # 12 "smt_main.c"
-#pragma config FOSC = INTOSC
+#pragma config FOSC = HS
 #pragma config PWRTE = OFF
 #pragma config MCLRE = ON
 #pragma config CP = OFF
 #pragma config BOREN = ON
 #pragma config CLKOUTEN = OFF
-#pragma config IESO = OFF
+#pragma config IESO = ON
 #pragma config FCMEN = ON
 
 
@@ -17177,6 +17177,7 @@ void smt_init(void)
     SMT1CON0bits.SMT1PS = 3;
     SMT1PR = 0xffffff;
     SMT1CON1bits.SMT1GO = 1;
+    SMT1SIGPPS = 0b00010110;
 
     SMT2CON1bits.MODE = 0;
     SMT2CON1bits.REPEAT =1;
@@ -17207,13 +17208,15 @@ void main(void) {
     ANSELAbits.ANSA4 =0;
     TRISBbits.TRISB6 = 0;
     TRISCbits.TRISC7 = 1;
-    OSCCONbits.SCS = 0;
-    OSCCONbits.IRCF = 0b1110;
+    TRISCbits.TRISC6 = 1;
+    ANSELCbits.ANSC6 = 0;
+
+
     INTCONbits.GIE = 1;
     INTCONbits.PEIE = 1;
     PIE4bits.SMT1PRAIE = 1;
     PIE4bits.SMT2IE = 1;
-    OSCTUNEbits.TUN = 0b011111;
+
 
     smt_init();
     uart_init();
@@ -17233,8 +17236,12 @@ void main(void) {
     {
         if(dataAvailable)
         {
-            smt2Value = ((SMT1CPR&0xffffff)/25);
-            printf("%ld\n",SMT1CPR&0xffffff);
+            (INTCONbits.GIE = 0);
+            smt2Value = ((SMT1CPR&0xffffff)/10);
+
+            smt2Value = 0xffffff-smt2Value+37;
+            (INTCONbits.GIE = 1);
+             printf("%ld\n",smt2Value);
             dataAvailable = 0;
         }
     }
@@ -17250,8 +17257,10 @@ void __attribute__((picinterrupt(("")))) myIsr (void)
     }
     if(PIR4bits.SMT2IF)
     {
-        PIR4bits.SMT2IF = 0;
-        SMT2TMR = 16777216-smt2Value;
+                PIR4bits.SMT2IF = 0;
+        SMT2TMR = smt2Value;
+
+
     }
 }
 void putch(char c)
